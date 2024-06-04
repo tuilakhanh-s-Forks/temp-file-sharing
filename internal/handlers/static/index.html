@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="stylesheet" href="/static/dropzone.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>{{ if .Name}}Share {{.Name}}{{else}}Share a file{{end}}</title>
+    <style>
+        .main {
+            padding-top: 20px;
+        }
+
+        .list {
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .list>div {
+            padding: 0.4em;
+        }
+
+        body {
+            text-decoration-skip: ink;
+        }
+
+        .hide {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="body">
+    <main class="main">
+        <h1 align="center"><a href="/">Share a file</a> </h1>
+        <p id="errormessage" class="error">{{.Error}}</p>
+        {{ if .Name}}
+        <!-- no error -->
+        <div class="content dropzone">
+            <p><a href="{{.Link}}" download>Download {{.Name}}</a> ({{.SizeHuman}}, permalink: <a href="{{.Link}}"
+                    target="_blank">
+                    /{{.ID}}</a>)
+            </p>
+            <p>
+            <details>
+                <summary>Show QR code</summary>
+                <center>
+                    <p align="center" style="max-width: 50%;width:50%;">
+                    <div id="qrcode" style="width:50%;"></div>
+                    </p>
+                </center>
+            </details>
+            </p>
+            {{if .IsImage}}
+            <img src="{{.Link}}" alt="{{.Name}}">
+            {{end}}
+            {{ if .Text }}
+            <pre><code>{{.Text}}</code></pre>
+            {{ end }}
+            {{ if .IsVideo}}
+            <video controls style="width:100%">
+                <source src="{{.Link}}" type="{{.ContentType}}">
+                Your browser does not support the video tag.
+            </video>
+            {{end}}
+            {{ if .IsAudio }}
+            <audio controls style="width:100%">
+                <source src="{{.Link}}" type="{{.ContentType}}">
+                Your browser does not support the audio element.
+            </audio>
+            {{ end }}
+            <p style="margin-bottom:0;">Uploaded {{.ModifiedHuman}} at {{.Modified.Format "3:04pm on January 2, 2006"}}.
+            </p>
+            <p> Automatic deletion in <em>{{.TimeToDeletionHuman}}</em>. <a href="/delete/{{.ID}}">Delete now</a>.</p>
+        </div>
+        {{ else }}
+        <div id="filesBox" class="dropzone">
+            <div class="dz-message" data-dz-message><span>Drop or click here to share a file.<br>
+                    <p><small>Max file size: {{.Config.MaxBytesPerFileHuman}}</small></p>
+                </span></div>
+        </div>
+        {{end}}
+        <div id="history" class="dropzone hide">
+            <p style="margin-bottom: 0.5em;">Previous files:</p>
+            <div id="historylist" class="list">
+            </div>
+        </div>
+        <input type="text" value="{{.Link}}" id="myInput" hidden>
+    </main>
+    {{ if .Name}}
+    <script src="/static/qrcode.min.js"></script>
+    <script>
+        var qrcode = new QRCode("qrcode");
+        qrcode.makeCode(window.location.href);
+    </script>
+    {{else}}
+    <script src="/static/dropzone.js"></script>
+    <script>
+        function humanFileSize(bytes, si) {
+            var thresh = si ? 1000 : 1024;
+            if (Math.abs(bytes) < thresh) {
+                return bytes + ' B';
+            }
+            var units = si ? ['kB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'] : ['KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB'];
+            var u = -1;
+            do {
+                bytes /= thresh;
+                ++u;
+            } while (Math.abs(bytes) >= thresh && u < units.length - 1);
+            return bytes.toFixed(1) + ' ' + units[u];
+        }
+
+        function bytesToMB(bytes) {
+            return bytes / (1000 * 1000);
+        }
+
+        var Name = "";
+        var filesize = 0;
+
+        
+
+        (function (Dropzone) {
+            Dropzone.autoDiscover = false;
+
+            let drop = new Dropzone('div#filesBox', {
+                maxFiles: 1,
+                url: '/',
+                method: 'post',
+                createImageThumbnails: false,
+                previewTemplate: "<div id='preview' class='.dropzone-previews'>#</div>",
+                chunking: false,
+                forceChunking: false,
+                parallelChunkUploads: false,
+                timeout: 3000000,
+                maxFilesize: bytesToMB("{{.Config.MaxBytesPerFile}}"),
+            });
+
+            drop.on("uploadprogress", function (file, progress, bytesSent) {
+                const progressBarWidth = document.getElementById('preview').offsetWidth - 70;
+                const completedBlocks = Math.round(progressBarWidth / 9.03 * progress / 100);
+                document.getElementById('preview').innerHTML = `
+                    ${fileName} (${humanFileSize(fileSize)})
+                    <p>${"#".repeat(completedBlocks)} ${Math.round(progress)}%</p>
+                `;
+            });
+
+            drop.on('success', function (file, response) {
+                console.log("success");
+                console.log(response);
+                response = JSON.parse(file.xhr.response);
+                console.log(file)
+                if (response.id != "none") {
+                    location.replace("/" + response.id);
+                }
+            });
+
+            drop.on('error', function (file, errorMessage) {
+                console.error('Upload error:', errorMessage);
+                document.getElementById("errormessage").innerText = errorMessage;
+                drop.removeAllFiles();
+            });
+
+            drop.on('addedfile', function (file) {
+                console.log('File added:', file);
+                fileName = file.name;
+                fileSize = file.size;
+                document.getElementById('preview').textContent = `${fileName} (${humanFileSize(fileSize)})`;
+            });
+
+            drop.on('removedfile', function (file) {
+                console.log(file);
+            });
+        })(Dropzone);
+    </script>
+    {{end}}
+    <script>
+        document.getElementById("historylist").innerHTML = "";
+        for (var i = 0, len = localStorage.length; i < len; i++) {
+            var key = localStorage.key(i);
+            var value = localStorage[key];
+            console.log(key + " => " + value);
+            fetch(`/exists/${key}/${value}`)
+                .then(function (response) {
+                    return response.json();
+                })
+                .then(function (myJson) {
+                    if (myJson.exists == "yes") {
+                        document.getElementById("history").className = "dropzone";
+                        document.getElementById("historylist").innerHTML = document.getElementById("historylist").innerHTML + `<div><a href="/${myJson.id}/${myJson.name}">${myJson.name}</a></div>`;
+
+                    } else {
+                        localStorage.removeItem(myJson.id);
+                    }
+                });
+        }
+    </script>
+    {{ if .Name}}
+    <script>
+        localStorage.setItem('{{.ID}}', '{{.Name}}');
+    </script>
+    {{end}}
+</body>
+
+</html>
